@@ -1,6 +1,6 @@
 ---
 title: "STAT/MATH 495: Problem Set 06"
-author: "WRITE YOUR NAME HERE"
+author: "Syed Abbas Shah"
 date: "2017-10-17"
 output:
   html_document:
@@ -20,8 +20,10 @@ set.seed(76)
 
 # Load packages
 library(tidyverse)
+library(mosaic)
 library(broom)
 library(knitr)
+library(gridExtra)
 ```
 
 
@@ -32,7 +34,7 @@ library(knitr)
 
 Please indicate who you collaborated with on this assignment: 
 
-
+No one
 
 
 
@@ -76,7 +78,6 @@ generate_sample <- function(f, n, sigma) {
   # Recall: We don't observe f(x) and epsilon, just (x, y)
   sample <- sample %>% 
     select(x, y)
-  
   return(sample)
 }
 ```
@@ -95,25 +96,112 @@ n_sample <- 10000
 
 # Computation
 
-```{r}
 
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+s<-generate_sample(f,n,sigma)
+```
+
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+baseplot <- ggplot(data=NULL) +
+  geom_vline(xintercept = x0, linetype="dashed") +
+  geom_point(data=test_set, aes(x=.95,y=.9025), col="brown", size=4.5) +
+  coord_cartesian(xlim=c(0, 1), ylim=c(-0.75, 1.5))
+
+plot_df_2 <- baseplot +
+  labs(title="Degrees of freedom = 2")
+plot_df_99 <- baseplot +
+  labs(title="Degrees of freedom = 99")
+```
+
+
+Let's try our two spline models on 40 samples randomly generated from our function. This is so we can visualize what we're trying to do here.
+
+```{r, message=FALSE, warning=FALSE}
+for(i in 1:40) {
+  sampled_points <- generate_sample(f, n, sigma)
+  # Fit splines with df=2 and add to plot
+  fitted_df_2 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=2) %>%
+    augment()
+  plot_df_2 <- plot_df_2 +
+    geom_point(data=fitted_df_2, aes(x=x, y=y), alpha=0.1) +
+    geom_line(data=fitted_df_2, aes(x=x, y=.fitted), col="blue", alpha=.8, size=1.25)
+  # Fit splines with df=99 and add to plot
+  fitted_df_99 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=99) %>%
+    augment()
+  plot_df_99 <- plot_df_99 +
+    geom_point(data=fitted_df_99, aes(x=x, y=y), alpha=0.1) +
+    geom_line(data=fitted_df_99, aes(x=x, y=.fitted), col="blue", alpha=0.8, size=1.25)
+  
+}
+plot_df_2 <- plot_df_2 +
+  geom_point(data=data_frame(x=x0, y=0.9025), aes(x=x,y=y), col="red", size=4.5)
+plot_df_99 <- plot_df_99 +
+  geom_point(data=data_frame(x=x0, y=0.9025), aes(x=x,y=y), col="red", size=4.5)
+grid.arrange(plot_df_2,plot_df_99)
 ```
 
 
 # Tables
 
-As done in Lec 2.7, for both
+Let's simulate 500 points and compute values for the error terms
 
-* An `lm` regression AKA a `smooth.splines(x, y, df=2)` model fit 
-* A `smooth.splines(x, y, df=99)` model fit 
+```{r, message=FALSE, warning=FALSE}
+x0<-0.95
+y0 <- .95^2 #actual y0
+y<-0
+z<-0
+set.seed(50)
+for(i in 1:500){  
+sampled_points <- generate_sample(f, n, sigma)
+model2 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=2)
+y[i]<- predict(model2,x0)$y
+model3 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=99)
+z[i]<- predict(model3,x0)$y
+}  
+y<- data.frame(y)
+resid <- y0 - y$y
+resid2 <- resid^2
+var_y <- var(y$y)
+mse <- mean (resid2)
+bias <- mean(y$y) - y0
+bias2 <- bias^2
+sdeps <- sd(resid)
+vareps <- var(resid)
+bias2 + mse + sdeps
 
-output tables comparing:
+z<- data.frame(z)
+resid <- y0 - z$z
+resid2 <- resid^2
+var_z <- var(z$z)
+mse <- mean (resid2)
+bias <- mean(z$z) - y0
+bias2 <- bias^2
+sdeps <- mean(resid)
+var(resid)
+bias2 + mse 
 
-|  MSE| bias_squared|   var| irreducible|   sum|
-|----:|------------:|-----:|-----------:|-----:|
-|     X|           X  |     X |      X |         X |
+```
 
-where `sum = bias_squared + var + irreducible`. You can created cleanly formatted tables like the one above by piping a data frame into `knitr::kable(digits=4)`.
+
+I will record the responses here:
+
+
+ Df 2:
+ The MSE is 0.146
+ Bias squared is .0139
+ Var is 0.0006
+ 
+ for Df 99:
+ MSE is 0.0189
+ bias squared is 4.36e-06
+ Var is 0.0189
+
+
+
+
+
 
 
 
@@ -123,14 +211,20 @@ where `sum = bias_squared + var + irreducible`. You can created cleanly formatte
 **Questions**:
 
 1. Based on the topics covered in Lec 2.7, name one possible "sanity check" for your results. Name another if you can.
-1. In **two** sentences or less, give a rough sketch of what the procedure would
+
+2. In **two** sentences or less, give a rough sketch of what the procedure would
 be to get the breakdown of $$\mbox{MSE}\left[\widehat{f}(x)\right]$$ for *all*
 $x$ in this example, and not just for $$\mbox{MSE}\left[\widehat{f}(x_0)\right]
 = \mbox{MSE}\left[\widehat{f}(0.95)\right]$$.
-1. Which of the two models would you choose for predicting the point of interest and why?
+
+3. Which of the two models would you choose for predicting the point of interest and why?
 
 **Answers**:
 
-1.
-1.
-1.
+1. The plots should show that low flexibility models should be have lower variance (fewer 'wiggles') as opposed to higher flexibility models. Moreover, the overeall error can never be lower than the irreducible error. If that appears to be the case, something has gone wrong.
+
+2. We would have to look at the bias and variance in estimates for all values by computing the difference between the estimates and the true values. 
+
+
+3. If the goal were simply to predict the point of interest, I would for the more flexible model i.e. the df=99 one. This is because the bias of this model is much lower than the lm model (even if the variance is higher). As we can see in the plots above, the flexible curves contain the red dot, whereas the linear lines tend to miss it.
+
