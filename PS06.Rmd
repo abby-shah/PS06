@@ -101,8 +101,6 @@ n_sample <- 10000
 s<-generate_sample(f,n,sigma)
 ```
 
-
-
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 baseplot <- ggplot(data=NULL) +
   geom_vline(xintercept = x0, linetype="dashed") +
@@ -142,69 +140,69 @@ plot_df_99 <- plot_df_99 +
 grid.arrange(plot_df_2,plot_df_99)
 ```
 
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+baseplot <- ggplot(data=NULL) +
+  geom_vline(xintercept = x0, linetype="dashed") +
+  geom_point(data=test_set, aes(x=.95,y=.9025), col="brown", size=4.5) +
+  coord_cartesian(xlim=c(0, 1), ylim=c(-0.75, 1.5))
 
-# Tables
-
-Let's simulate 500 points and compute values for the error terms
-
-```{r, message=FALSE, warning=FALSE}
-x0<-0.95
-y0 <- .95^2 #actual y0
-y<-0
-z<-0
-set.seed(50)
-for(i in 1:500){  
-sampled_points <- generate_sample(f, n, sigma)
-model2 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=2)
-y[i]<- predict(model2,x0)$y
-model3 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=99)
-z[i]<- predict(model3,x0)$y
-}  
-y<- data.frame(y)
-resid <- y0 - y$y
-resid2 <- resid^2
-var_y <- var(y$y)
-mse <- mean (resid2)
-bias <- mean(y$y) - y0
-bias2 <- bias^2
-sdeps <- sd(resid)
-vareps <- var(resid)
-bias2 + mse + sdeps
-
-z<- data.frame(z)
-resid <- y0 - z$z
-resid2 <- resid^2
-var_z <- var(z$z)
-mse <- mean (resid2)
-bias <- mean(z$z) - y0
-bias2 <- bias^2
-sdeps <- mean(resid)
-var(resid)
-bias2 + mse 
-
+plot_df_2 <- baseplot +
+  labs(title="Degrees of freedom = 2")
+plot_df_99 <- baseplot +
+  labs(title="Degrees of freedom = 99")
 ```
 
 
-I will record the responses here:
+
+# Tables
 
 
- Df 2:
- The MSE is 0.146
- Bias squared is .0139
- Var is 0.0006
- 
- for Df 99:
- MSE is 0.0189
- bias squared is 4.36e-06
- Var is 0.0189
+Let's simulate 2000 points and compute values for the error terms
 
 
+```{r, message=FALSE, warning=FALSE}
+x0<-0.95;y0 <- .95^2 #actual y0
+estimatedy2<-0;estimatedy99<-0
+set.seed(50)
+for(i in 1:2000){  
+sampled_points <- generate_sample(f, n, sigma)
+model2 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=2)
+estimatedy2[i]<- predict(model2,x0)$y
+model99 <- smooth.spline(x=sampled_points$x, y=sampled_points$y, df=99)
+estimatedy99[i]<- predict(model99,x0)$y
+}  
 
+```
 
+Now, we can do all the necessary computations.
+```{r, message=FALSE, warning=FALSE}
+set.seed(100)
+observedy = f(x0) + rnorm(2000, 0, sigma) #generating 'true values'
+data2 <- data.frame(observedy)
+data99<- data.frame(observedy)
+data2$estimatedy2 <- estimatedy2
+data99$estimatedy99 <- estimatedy99
+data2$residmodel2 <- (observedy-estimatedy2)
+data99$residmodel99<- (observedy-estimatedy99)
 
+errordecomposition2 <- data2 %>% 
+  summarize(Name = "Spline df 2",Variance = var(estimatedy2), `Bias Squared` =(mean(estimatedy2)-y0)^2, MSE = mean(residmodel2^2), `Irreducible Error` = sigma^2) 
+errordecomposition2$Sum = errordecomposition2$`Bias Squared`+errordecomposition2$Variance + errordecomposition2$`Irreducible Error`
 
+errordecomposition99 <- data99 %>%
+  summarize(Name = "Spline df 99",Variance = var(estimatedy99), `Bias Squared` =(mean(estimatedy99)-y0)^2, MSE = mean(residmodel99^2), `Irreducible Error` = sigma^2) 
+errordecomposition99$Sum = errordecomposition99$`Bias Squared`+errordecomposition99$Variance + errordecomposition99$`Irreducible Error`
 
+Error <- rbind(errordecomposition2,errordecomposition99)
+```
 
+Now, I'm going to print the decomposed error, and contrast the components between the linear (df=2) and the extremely flexible (df=99) model.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::kable(Error, digits=4, format="html", caption = "Error Comparison")
+```
+
+This is unsurprising. The linear model has lower variance than the df 99 one, and the latter has lower bias squared. The MSE in the linear model is a bit less than the df 99 one, because the latter is very overfit.
 
 # Analysis
 
@@ -221,10 +219,12 @@ $x$ in this example, and not just for $$\mbox{MSE}\left[\widehat{f}(x_0)\right]
 
 **Answers**:
 
-1. The plots should show that low flexibility models should be have lower variance (fewer 'wiggles') as opposed to higher flexibility models. Moreover, the overeall error can never be lower than the irreducible error. If that appears to be the case, something has gone wrong.
+1. The plots should show that low flexibility models should be have lower variance (fewer 'wiggles') as opposed to higher flexibility models. That is, the linear model should have lower variance and higher bias than the df=99 model, for the latter is much more flexible and is attuned to the idiosyncrasies of the training sample. 
+Moreover, the overall error can never be lower than the irreducible error. If that appears to be the case, something has gone wrong.
 
-2. We would have to look at the bias and variance in estimates for all values by computing the difference between the estimates and the true values. 
+2. We would have to look at the MSE in estimates for all values by computing the difference between the estimates and the true values. That means we would need to repeat what I did above for all values of x that interest us. I.e., instead of having a test set with just 0.95, we would need to simulate function values for the entire domain of x, predict y_hat for the domain, and then compute the respective MSE values.
+
+3. If the goal were simply to predict the point of interest, I would probably not pick either of these models. That said, between both, I would opt for the Linear model. This is because the variance is substantially lower, and because the df=99 model is extremely overfit, leading to poorer predictions. Thus, even if the Linear model has higher bias, it would give better predictions than a highly overfit model.
 
 
-3. If the goal were simply to predict the point of interest, I would for the more flexible model i.e. the df=99 one. This is because the bias of this model is much lower than the lm model (even if the variance is higher). As we can see in the plots above, the flexible curves contain the red dot, whereas the linear lines tend to miss it.
 
